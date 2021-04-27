@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<root>
+  <quotes>
+  </quotes>
+  <settings>
+    <adminRole></adminRole>
+    <reactEmote></reactEmote>
+    <reactcount>9</reactcount>
+    <pinChannel></pinChannel>
+    <memory>training.txt</memory>
+  </settings>
+  <blacklist>
+  </blacklist>
+</root>
