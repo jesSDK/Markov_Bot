@@ -22,6 +22,8 @@ namespace Jay_Bot
         public static string previousmessage;
         static Dictionary<ulong, int> reacts = new Dictionary<ulong, int>();
         static Dictionary<ulong, bool> isPinned = new Dictionary<ulong, bool>();
+        public static int fireAt = 20;
+
 
         //Load from xml
         public static XmlDocument settings = new XmlDocument();
@@ -63,6 +65,8 @@ namespace Jay_Bot
             string training = sr.ReadToEnd();
             Markov.markovTrain(training);
             sr.Dispose();
+
+            rngNumber();
 
             AutoUpdater.Synchronous = true;//Auto-Update Settings
             AutoUpdater.Mandatory = true;
@@ -357,24 +361,27 @@ namespace Jay_Bot
                     await message.Channel.SendMessageAsync("Quote removed!");
                 }
             }
-            
-            int randomNo = rng.Next(20, 75);
-            Console.Title = "MessageCount: " + messageCount + " fires at: " + randomNo;
-            if (blacklist.Contains(message.Channel.Id))
-            {
 
-            }
-            else
+            Console.Title = "MessageCount: " + messageCount + " fires at: " + fireAt;
+            if (!blacklist.Contains(message.Channel.Id))
             {
                 messageCount++;
+                if (messageCount >= fireAt)
+                {
+                    string toSend = Markov.generate().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
+                    await message.Channel.SendMessageAsync(toSend);
+                    messageCount = 0;
+                    rngNumber();
+                }
             }
-            if(messageCount >= randomNo)
-            {
-                string toSend = Markov.generate().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
-                await message.Channel.SendMessageAsync(toSend);
-                messageCount = 0;
-            }
+
             
+            
+        }
+
+        public void rngNumber()
+        {
+            fireAt = rng.Next(20, 75);
         }
 
         private void TrainMessage(SocketMessage message) //Train markov on message received
