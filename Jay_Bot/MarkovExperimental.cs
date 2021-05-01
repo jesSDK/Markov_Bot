@@ -6,76 +6,73 @@ using System.Threading.Tasks;
 
 namespace Jay_Bot
 {
-    class Markov
+    class MarkovExperimental
     {
 
-        public static Dictionary<string, Dictionary<string, int>> dic = new Dictionary<string, Dictionary<string, int>>();
+        public static Dictionary<string, Dictionary<string, double>> dicEx = new Dictionary<string, Dictionary<string, double>>();
         public static Random rng = new Random();
-        public static Dictionary<string, double> probWord;
+        public static Dictionary<string, double> probWordEx;
+        public static List<string> startWords = new List<string>();
 
-        public static void markovTrain(string text)
+        public static void markovTrainExperimental(string text)
         {
             string[] words = text.Split(' ');
             List<string> pWord = new List<string>();
             for (int i = 0; i < words.Length - 1; i++)
             {
                 string curWord = words[i];
+                if (curWord.Contains('\u0002'))
+                {
+                    startWords.Add(curWord);
+                }
                 string nextWord = words[i + 1];
-                bool keyexists = dic.ContainsKey(curWord);
+                bool keyexists = dicEx.ContainsKey(curWord);
                 if (!keyexists)
                 {
-                    dic.Add(curWord, new Dictionary<string, int>());
+                    dicEx.Add(curWord, new Dictionary<string, double>());
                 }
 
-                if (dic[curWord].ContainsKey(nextWord))
+                if (dicEx[curWord].ContainsKey(nextWord))
                 {
-                    dic[curWord][nextWord]++;
+                    //dicEx[curWord][nextWord]++;//seen word already, increase count. maybe we can just calc probability here? 
+                    dicEx[curWord][nextWord] = Probability(dicEx[curWord][nextWord]);
                 }
                 else
                 {
-                    dic[curWord].Add(nextWord, 1);
+                    dicEx[curWord].Add(nextWord, Math.Sqrt(1));//get dictionary from dic and add entry of the next word and set count to sqrt1
                 }
 
             }
         }
 
 
-        public static string generate()
+        private static double Probability(double prob)
         {
-            List<string> startWords = new List<string>();
-            foreach (string sWord in dic.Keys)
-            {
-                if (sWord.Contains('\u0002'))
-                {
-                    startWords.Add(sWord);
-                }
-            }
+            prob = Math.Pow(prob, 2) + 1; //square & add 1
+            prob = Math.Sqrt(prob); //sqrt again for better choices
+            return prob;
+        }
+
+        public static string generateEx()
+        {
             string startWord = startWords.ElementAt(rng.Next(0, startWords.Count));
             StringBuilder stringBuilder = new StringBuilder(startWord);
-            for (int i = 0; i < dic.Count; i++)
+            for (int i = 0; i < dicEx.Count; i++)
             {
-                Dictionary<string, int> assDic;
                 double totalweight = 0;
-                assDic = dic[startWord];
-                probWord = new Dictionary<string, double>();
-                foreach (var assWord in assDic)
-                {
-                    double nvalue = assWord.Value;
-                    probWord.Add(assWord.Key, System.Math.Sqrt(nvalue));
-                }
-                foreach (double weight in probWord.Values)
+                foreach (double weight in dicEx[startWord].Values)
                 {
                     totalweight += weight;
                 }
                 double randomnumber = rng.Next(0, (int)totalweight);
-                foreach (string newword in probWord.Keys)
+                foreach (string newword in dicEx[startWord].Keys)
                 {
-                    if (randomnumber < probWord[newword])
+                    if (randomnumber < dicEx[startWord][newword])
                     {
                         startWord = newword;
                         break;
                     }
-                    randomnumber = randomnumber - probWord[newword];
+                    randomnumber = randomnumber - dicEx[startWord][newword];
                 }
                 if (startWord.Contains('\u0003'))
                 {

@@ -63,6 +63,7 @@ namespace Jay_Bot
 
             StreamReader sr = new StreamReader(memoryFile, Encoding.ASCII);//markov memory
             string training = sr.ReadToEnd();
+            MarkovExperimental.markovTrainExperimental(training);
             Markov.markovTrain(training);
             sr.Dispose();
 
@@ -260,6 +261,11 @@ namespace Jay_Bot
                 if (!isAdmin)
                 {
                     return;
+                }
+                if (message.Content.Contains("!experimental"))
+                {
+                    string toSend = MarkovExperimental.generateEx().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
+                    await message.Channel.SendMessageAsync(toSend);
                 }
                 if (message.Content.Contains("!blacklist"))
                 {
