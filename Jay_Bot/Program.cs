@@ -72,7 +72,7 @@ namespace Jay_Bot
             AutoUpdater.Synchronous = true;//Auto-Update Settings
             AutoUpdater.Mandatory = true;
             AutoUpdater.UpdateMode = Mode.Forced;
-            AutoUpdater.InstalledVersion = new Version("1.3.2.0");
+            AutoUpdater.InstalledVersion = new Version("1.3.4.0");
             AutoUpdater.CheckForUpdateEvent += AutoUpdaterOnCheckForUpdateEvent;
             AutoUpdater.ReportErrors = true;
             AutoUpdater.RunUpdateAsAdmin = false;
@@ -218,6 +218,12 @@ namespace Jay_Bot
             }
         }
 
+        private string follows(string word)
+        {
+            var max = MarkovExperimental.dicEx[word].Aggregate((l, r) => l.Value > r.Value ? l : r).Key;
+            return max;
+        }
+
         private async Task MessageReceived(SocketMessage message)
         {
 
@@ -246,7 +252,7 @@ namespace Jay_Bot
                     await message.Channel.SendMessageAsync(output);
                 }else if (quoteToUse.Value == "markov")
                 {
-                    string toSend = Markov.generate().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
+                    string toSend = MarkovExperimental.generateEx().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
                     await message.Channel.SendMessageAsync(toSend);
                 }
                 else
@@ -366,6 +372,11 @@ namespace Jay_Bot
                     deleteQuote(message.Content.Substring(13, message.Content.Length - 13));
                     await message.Channel.SendMessageAsync("Quote removed!");
                 }
+                if (message.Content.Contains("!follows"))
+                {
+                    string word = message.Content.Substring(9);
+                    await message.Channel.SendMessageAsync(follows(word));
+                }
             }
 
             Console.Title = "MessageCount: " + messageCount + " fires at: " + fireAt;
@@ -374,7 +385,7 @@ namespace Jay_Bot
                 messageCount++;
                 if (messageCount >= fireAt)
                 {
-                    string toSend = Markov.generate().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
+                    string toSend = MarkovExperimental.generateEx().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
                     await message.Channel.SendMessageAsync(toSend);
                     messageCount = 0;
                     rngNumber();

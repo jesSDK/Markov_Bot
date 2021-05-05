@@ -11,7 +11,6 @@ namespace Jay_Bot
 
         public static Dictionary<string, Dictionary<string, double>> dicEx = new Dictionary<string, Dictionary<string, double>>();
         public static Random rng = new Random();
-        public static Dictionary<string, double> probWordEx;
         public static List<string> startWords = new List<string>();
 
         public static void markovTrainExperimental(string text)
@@ -34,7 +33,6 @@ namespace Jay_Bot
 
                 if (dicEx[curWord].ContainsKey(nextWord))
                 {
-                    //dicEx[curWord][nextWord]++;//seen word already, increase count. maybe we can just calc probability here? 
                     dicEx[curWord][nextWord] = Probability(dicEx[curWord][nextWord]);
                 }
                 else
