@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using System.IO;
 using AutoUpdaterDotNET;
 using System.Xml;
+using SpotifyAPI.Web;
+using SpotifyAPI.Web.Auth;
 
 namespace Jay_Bot
 {
@@ -17,10 +19,14 @@ namespace Jay_Bot
             => new Program().MainAsync().GetAwaiter().GetResult();
 
         private DiscordSocketClient _client;
+        private static SpotifyClient _spotClient;
+        private static EmbedIOAuthServer _server;
         public static int messageCount;
         public static Random rng = new Random();
         public static string previousmessage;
         static Dictionary<ulong, int> reacts = new Dictionary<ulong, int>();
+        static Dictionary<ulong, int> songReacts = new Dictionary<ulong, int>();
+        static Dictionary<ulong, bool> isInPlaylist = new Dictionary<ulong, bool>();
         static Dictionary<ulong, bool> isPinned = new Dictionary<ulong, bool>();
         public static int fireAt = 20;
 
@@ -32,6 +38,10 @@ namespace Jay_Bot
         public static string reactEmote;
         public static string memoryFile;
         public static ulong pinChannel;
+        public static ulong songChannel;
+        public static int songLimit;
+        public static string playlistID;
+        public static string songReact;
         public static List<UInt64> blacklist = new List<ulong>();
         public static Dictionary<string, string> quotes = new Dictionary<string, string>();
         public static string rules;
@@ -52,6 +62,26 @@ namespace Jay_Bot
             string tokenRead = rToke.ReadToEnd();
             var token = tokenRead;
             rToke.Dispose();
+
+            StreamReader spotifyTokenReader = new StreamReader(@"spotify.txt");
+            string spotClient = spotifyTokenReader.ReadLine();
+            spotifyTokenReader.Dispose();
+
+
+            _server = new EmbedIOAuthServer(new Uri("http://localhost:5000/callback"), 5000);
+            await _server.Start();
+
+            _server.ImplictGrantReceived += OnImplicitGrantReceived;
+            _server.ErrorReceived += OnErrorReceived;
+
+            var request = new LoginRequest(_server.BaseUri, spotClient, LoginRequest.ResponseType.Token)
+            {
+                Scope = new List<string> { Scopes.PlaylistModifyPublic }
+            };
+            BrowserUtil.Open(request.ToUri());
+
+
+
 
             await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
@@ -81,17 +111,36 @@ namespace Jay_Bot
             await Task.Delay(-1);
         }
 
+        private static async Task OnImplicitGrantReceived(object sender, ImplictGrantResponse response)
+        {
+            await _server.Stop();
+            _spotClient = new SpotifyClient(response.AccessToken);
+        }
+
+        private static async Task OnErrorReceived(object sender, string error, string state)
+        {
+            Console.WriteLine($"Aborting authorization, error received: {error}");
+            await _server.Stop();
+        }
+
         public static void loadSettings()
         {
             quotes.Clear();
             blacklist.Clear();
             settings.Load("Settings.xml");
             ulong.TryParse(settings.SelectSingleNode("//settings/adminRole").InnerText, out adminId);
+            playlistID = settings.SelectSingleNode("//settings/playlistID").InnerText;
             memoryFile = settings.SelectSingleNode("//settings/memory").InnerText;
             reactEmote = settings.SelectSingleNode("//settings/reactEmote").InnerText;
             reactLimit = int.Parse(settings.SelectSingleNode("//settings/reactcount").InnerText);
+            songLimit = int.Parse(settings.SelectSingleNode("//settings/songLimit").InnerText);
+            songReact = settings.SelectSingleNode("//settings/songEmote").InnerText;
             if(settings.SelectSingleNode("//settings/pinChannel").InnerText != ""){
                 pinChannel = ulong.Parse(settings.SelectSingleNode("//settings/pinChannel").InnerText);
+            }
+            if (settings.SelectSingleNode("//settings/pinChannel").InnerText != "")
+            {
+                songChannel = ulong.Parse(settings.SelectSingleNode("//settings/songChannel").InnerText);
             }
             foreach (XmlNode quote in settings.SelectSingleNode("//quotes"))
             {
@@ -128,7 +177,7 @@ namespace Jay_Bot
             }
 
         }
-        private async Task removeReactCount(Cacheable<IUserMessage, ulong> arg1, ISocketMessageChannel arg2, SocketReaction arg3)//if a message is unreacted
+        private Task removeReactCount(Cacheable<IUserMessage, ulong> arg1, ISocketMessageChannel arg2, SocketReaction arg3)//if a message is unreacted
         {
             if (arg2.Id != pinChannel) //any channel other than pins
             {
@@ -138,11 +187,13 @@ namespace Jay_Bot
                     {
                         if (!isPinned.ContainsKey(arg1.Id))
                         {
-                            reacts[arg1.Id]--;
+                             reacts[arg1.Id]--;
                         }
                     }
                 }
             }
+
+            return Task.CompletedTask;
         }
 
         private void AutoUpdaterOnCheckForUpdateEvent(UpdateInfoEventArgs args)//check for updates
@@ -171,6 +222,39 @@ namespace Jay_Bot
         }
         private async Task CountReacts(Cacheable<IUserMessage, ulong> arg1, ISocketMessageChannel arg2, SocketReaction arg3)//if reacts are equal to x, send original message to specificed channel
         {
+            if(arg2.Id == songChannel)
+            {
+                 var message = await arg1.GetOrDownloadAsync();
+                if(arg3.Emote.Name.ToString() == songReact)
+                {
+                    if (songReacts.ContainsKey(arg1.Id))
+                    {
+                        songReacts[arg1.Id]++;
+                        if (songReacts[arg1.Id] == songLimit)
+                        {
+                            if (!isInPlaylist.ContainsKey(arg1.Id))
+                            {
+                                isInPlaylist.Add(arg1.Id, true);
+                            }
+                            else
+                            {
+                                return;
+                            }
+
+                            //add to spotify playlist
+                            string uri = message.Content.Replace("https://open.spotify.com/track/", "").Replace("http://open.spotify.com/track/", "").Replace("&utm_source=copy-link", "");
+                            List<string> uris = new List<string>();
+                            uris.Add("spotify:track:" + uri);
+                            await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
+                        }
+                    }
+                    else
+                    {
+                        songReacts.Add(arg1.Id, 1);
+                    }
+                   
+                }
+            }
             if (arg2.Id != pinChannel)
             {
                 await arg1.GetOrDownloadAsync(); //download message content to cache
@@ -217,6 +301,45 @@ namespace Jay_Bot
                 }
             }
         }
+
+        private string t10()
+        {
+            Dictionary<string, int> swordscount = new Dictionary<string, int>();
+            foreach (string sword in MarkovExperimental.startWords)
+            {
+                if (swordscount.ContainsKey(sword)){
+                    swordscount[sword]++;
+                }
+                else
+                {
+                    swordscount.Add(sword, 1);
+                }
+                
+            }
+            Dictionary<string, double> fromMark = new Dictionary<string, double>();
+            foreach(var x in MarkovExperimental.dicEx.Values)
+            {
+                foreach(KeyValuePair<string,double> y in x)
+                {
+                    fromMark.Add(y.Key, y.Value);
+                }
+            }
+            var sorted = from entry in fromMark orderby entry.Value descending select entry;
+            var top10 = sorted.Take(10);
+            StringBuilder sb = new StringBuilder();
+            int l = 1;
+            foreach (KeyValuePair<string,double> val in top10)
+            {
+                string clean = val.Key.ToString().Replace("\r", "").Replace("\n", "").Replace("\u0002", "");
+                sb.AppendLine(l + ". " + clean + " used " + val.Value + " times to start a sentence");
+                l++;
+                if (l == 10) break;
+
+            }
+
+            return sb.ToString();
+        }
+
 
         private string follows(string word)
         {
@@ -298,6 +421,91 @@ namespace Jay_Bot
                     await message.Channel.SendMessageAsync("Pins channel set to " + message.Channel.Name);
                     loadSettings();
                 }
+                if(message.Content.Contains("!songchannel"))
+                {
+                    songChannel = message.Channel.Id;
+                    XmlNode xsonchan = settings.DocumentElement.SelectSingleNode("//settings/songChannel");
+                    xsonchan.InnerText = message.Channel.Id.ToString();
+                    settings.Save("settings.xml");
+                    await message.Channel.SendMessageAsync("Song channel set to " + message.Channel.Name);
+                    loadSettings();
+                }
+                if (message.Content.Contains("!playlist"))
+                {
+                    string playID = message.Content.Substring(10);
+                    if (message.Content.Length < 10)
+                    {
+                        await message.Channel.SendMessageAsync("No playlist ID provided");
+                    }
+                    XmlNode playlistnode = settings.DocumentElement.SelectSingleNode("//settings/playlistID");
+                    playlistnode.InnerText = playID;
+                    playlistID = playID;
+                    settings.Save("settings.xml");
+                    await message.Channel.SendMessageAsync("Play list ID set to " + playID);
+                }
+                if (message.Content.Contains("!song react"))
+                {
+                    if (message.Content.Length == 11)
+                    {
+                        await message.Channel.SendMessageAsync("Song emote is:  " + songReact);
+                        return;
+                    }
+                    else
+                    {
+                        string emoteSet = message.Content.Substring(12, message.Content.Length - 12);
+                        string emoteName = "";
+                        if (emoteSet.Length > 15)
+                        {
+                            string finEmote = emoteSet.Replace("<", "").Replace(">", "").Replace(":", "");
+                            emoteName = finEmote.Substring(0, finEmote.Length - 18);
+                        }
+                        else
+                        {
+                            emoteName = emoteSet;
+                        }
+                       
+                        XmlNode xreactlimit = settings.DocumentElement.SelectSingleNode("//settings/songEmote");
+                        xreactlimit.InnerText = emoteName;
+                        songReact = emoteName;
+                        settings.Save("settings.xml");
+                        await message.Channel.SendMessageAsync("Song react emote set to: " + emoteSet);
+                    }
+
+                }
+                if (message.Content.Contains("!Songreactlimit"))
+                {
+                    string limit = "";
+                    if (message.Content.Length == 15)
+                    {
+                        XmlNode xreactlimit = settings.DocumentElement.SelectSingleNode("//settings/reactcount");
+                        await message.Channel.SendMessageAsync("React limit is currently " + xreactlimit.InnerText);
+                        return;
+                    }
+                    else
+                    {
+                        limit = message.Content.Substring(16, message.Content.Length - 16);
+                    }
+                    int limval;
+                    if (int.TryParse(limit, out limval))
+                    {
+                        if (limval < 100)
+                        {
+                            XmlNode xreactlimit = settings.DocumentElement.SelectSingleNode("//settings/songLimit");
+                            xreactlimit.InnerText = limit;
+                            settings.Save("settings.xml");
+                            await message.Channel.SendMessageAsync("Song react limit set to " + limit);
+                            int.TryParse(limit, out reactLimit);
+                        }
+                        else
+                        {
+                            await message.Channel.SendMessageAsync("Song react limit cannot be higher than 99");
+                        }
+                    }
+                    else
+                    {
+                        await message.Channel.SendMessageAsync("Thats not a number!");
+                    }
+                }
                 if (message.Content.Contains("!reactlimit"))
                 {
                     string limit = "";
@@ -339,9 +547,19 @@ namespace Jay_Bot
                         await message.Channel.SendMessageAsync("React emote is currently: " + reactEmote);
                         return;
                     }
+                    
                     string emoteSet = message.Content.Substring(12, message.Content.Length - 12);
-                    string finEmote = emoteSet.Replace("<", "").Replace(">", "").Replace(":", "");
-                    string emoteName = finEmote.Substring(0, finEmote.Length - 18);
+                    string emoteName = "";
+                    if (emoteSet.Length > 15)
+                    {
+                        string finEmote = emoteSet.Replace("<", "").Replace(">", "").Replace(":", "");
+                        emoteName = finEmote.Substring(0, finEmote.Length - 18);
+                    }
+                    else
+                    {
+                        emoteName = emoteSet;
+                    }
+
                     XmlNode xreactlimit = settings.DocumentElement.SelectSingleNode("//settings/reactEmote");
                     xreactlimit.InnerText = emoteName;
                     reactEmote = emoteName;
@@ -360,7 +578,10 @@ namespace Jay_Bot
                 }
                 if (message.Content.Contains("!ac"))
                 {
-                    await message.Channel.SendMessageAsync(isAdmin.ToString());
+                    List<string> uris = new List<string>();
+                    uris.Add("spotify:track:" + "5G1sTBGbZT5o4PNRc75RKI");
+                    await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
+
                 }
                 if (message.Content.Contains("!add quote"))
                 {
@@ -376,6 +597,10 @@ namespace Jay_Bot
                 {
                     string word = message.Content.Substring(9);
                     await message.Channel.SendMessageAsync(follows(word));
+                }
+                if (message.Content.Contains("!t10"))
+                {
+                    await message.Channel.SendMessageAsync(t10());
                 }
             }
 

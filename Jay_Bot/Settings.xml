@@ -7,6 +7,11 @@
     <reactEmote></reactEmote>
     <reactcount>9</reactcount>
     <pinChannel></pinChannel>
+    <songChannel></songChannel>
+    <songReacts></songReacts>
+    <songEmote></songEmote>
+    <songLimit>7</songLimit>
+    <playlistID></playlistID>
     <memory>training.txt</memory>
   </settings>
   <blacklist>
