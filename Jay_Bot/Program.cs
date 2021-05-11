@@ -87,7 +87,7 @@ namespace Jay_Bot
             await _client.StartAsync();
 
 
-            _client.MessageReceived += MessageReceived;//events
+            _client.MessageReceived += MessageReceived; //events
             _client.ReactionAdded += CountReacts;
             _client.ReactionRemoved += removeReactCount;
 
@@ -138,7 +138,7 @@ namespace Jay_Bot
             if(settings.SelectSingleNode("//settings/pinChannel").InnerText != ""){
                 pinChannel = ulong.Parse(settings.SelectSingleNode("//settings/pinChannel").InnerText);
             }
-            if (settings.SelectSingleNode("//settings/pinChannel").InnerText != "")
+            if (settings.SelectSingleNode("//settings/songChannel").InnerText != "")
             {
                 songChannel = ulong.Parse(settings.SelectSingleNode("//settings/songChannel").InnerText);
             }
@@ -193,6 +193,21 @@ namespace Jay_Bot
                 }
             }
 
+            if (arg2.Id == songChannel) //any channel other than pins
+            {
+                if (arg3.Emote.Name.ToString() == reactEmote)
+                {
+                    if (songReacts.ContainsKey(arg1.Id))
+                    {
+                        if (!isInPlaylist.ContainsKey(arg1.Id))
+                        {
+                            songReacts[arg1.Id]--;
+                        }
+                    }
+                }
+            }
+
+
             return Task.CompletedTask;
         }
 
@@ -222,30 +237,37 @@ namespace Jay_Bot
         }
         private async Task CountReacts(Cacheable<IUserMessage, ulong> arg1, ISocketMessageChannel arg2, SocketReaction arg3)//if reacts are equal to x, send original message to specificed channel
         {
+            logger("react occured");
+            logger("arg2.id = " + arg2.Id + " songChannel = " + songChannel);
             if(arg2.Id == songChannel)
             {
                  var message = await arg1.GetOrDownloadAsync();
+                if (!message.Content.Contains("open.spotify.com")) return;
                 if(arg3.Emote.Name.ToString() == songReact)
                 {
+                    logger("emotes are same and has link");
                     if (songReacts.ContainsKey(arg1.Id))
                     {
+                        logger("message seen before");
                         songReacts[arg1.Id]++;
                         if (songReacts[arg1.Id] == songLimit)
                         {
+                            logger("Limit reached");
                             if (!isInPlaylist.ContainsKey(arg1.Id))
                             {
+                                logger("not in playlist, add");
                                 isInPlaylist.Add(arg1.Id, true);
+                                string uri = message.Content.Replace("https://open.spotify.com/track/", "").Replace("http://open.spotify.com/track/", "").Replace("&utm_source=copy-link", "");
+                                if (uri.Contains("?si="))
+                                {
+                                    int index = uri.IndexOf("?si=");
+                                    uri = uri.Substring(0, index);
+                                }
+                                List<string> uris = new List<string>();
+                                uris.Add("spotify:track:" + uri);
+                                await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
+                                uris.Clear();
                             }
-                            else
-                            {
-                                return;
-                            }
-
-                            //add to spotify playlist
-                            string uri = message.Content.Replace("https://open.spotify.com/track/", "").Replace("http://open.spotify.com/track/", "").Replace("&utm_source=copy-link", "");
-                            List<string> uris = new List<string>();
-                            uris.Add("spotify:track:" + uri);
-                            await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
                         }
                     }
                     else
@@ -257,7 +279,7 @@ namespace Jay_Bot
             }
             if (arg2.Id != pinChannel)
             {
-                await arg1.GetOrDownloadAsync(); //download message content to cache
+                var message = await arg1.GetOrDownloadAsync(); //download message content to cache
                 var pinsChannel = _client.GetChannel(pinChannel) as IMessageChannel;
                 if (arg3.Emote.Name.ToString() == reactEmote)
                 {
@@ -271,11 +293,11 @@ namespace Jay_Bot
                                 isPinned.Add(arg1.Id, true);
                             }
                             string imageurl = "";
-                            foreach (Attachment att in arg1.GetOrDownloadAsync().Result.Attachments)
+                            foreach (Attachment att in message.Attachments)
                             {
                                     imageurl = att.ProxyUrl;
                             }
-                            foreach(Embed em in arg1.GetOrDownloadAsync().Result.Embeds)
+                            foreach(Embed em in message.Embeds)
                             {
                                 if (em.Url.Contains("tenor"))
                                 {
@@ -284,11 +306,11 @@ namespace Jay_Bot
                             }
                             var embed = new EmbedBuilder
                             {
-                                Title = arg1.GetOrDownloadAsync().Result.Author.Username.ToString() + " in #" + arg1.GetOrDownloadAsync().Result.Channel.Name,
+                                Title = message.Author.Username.ToString() + " in #" + message.Channel.Name,
                                 Color = Color.Green,
-                                Description = "[Go To Message](" + arg1.GetOrDownloadAsync().Result.GetJumpUrl() + ") \r\n \r\n" + arg1.GetOrDownloadAsync().Result.Content,
-                                ThumbnailUrl = arg1.GetOrDownloadAsync().Result.Author.GetAvatarUrl(),
-                                Timestamp = arg1.GetOrDownloadAsync().Result.Timestamp,
+                                Description = "[Go To Message](" + message.GetJumpUrl() + ") \r\n \r\n" + arg1.GetOrDownloadAsync().Result.Content,
+                                ThumbnailUrl = message.Author.GetAvatarUrl(),
+                                Timestamp = message.Timestamp,
                                 ImageUrl = imageurl
                             };
                             await pinsChannel.SendMessageAsync(embed: embed.Build());
@@ -349,7 +371,6 @@ namespace Jay_Bot
 
         private async Task MessageReceived(SocketMessage message)
         {
-
             var user = message.Author as SocketGuildUser;
             var role = (user as IGuildUser).Guild.Roles.FirstOrDefault(x => x.Id == adminId);
             bool isAdmin = false;
@@ -365,7 +386,7 @@ namespace Jay_Bot
                     return;
                 }
 
-                KeyValuePair<string,string> quoteToUse = quotes.ElementAt(rng.Next(0, quotes.Count));
+                KeyValuePair<string,string> quoteToUse = quotes.ElementAt(rng.Next(0, quotes.Count));   
                 if (quoteToUse.Value == "image")
                 {
                     await message.Channel.SendFileAsync(quoteToUse.Key);
