@@ -102,7 +102,7 @@ namespace Jay_Bot
             AutoUpdater.Synchronous = true;//Auto-Update Settings
             AutoUpdater.Mandatory = true;
             AutoUpdater.UpdateMode = Mode.Forced;
-            AutoUpdater.InstalledVersion = new Version("1.3.4.0");
+            AutoUpdater.InstalledVersion = new Version("1.4.0.0");
             AutoUpdater.CheckForUpdateEvent += AutoUpdaterOnCheckForUpdateEvent;
             AutoUpdater.ReportErrors = true;
             AutoUpdater.RunUpdateAsAdmin = false;
@@ -237,25 +237,19 @@ namespace Jay_Bot
         }
         private async Task CountReacts(Cacheable<IUserMessage, ulong> arg1, ISocketMessageChannel arg2, SocketReaction arg3)//if reacts are equal to x, send original message to specificed channel
         {
-            logger("react occured");
-            logger("arg2.id = " + arg2.Id + " songChannel = " + songChannel);
             if(arg2.Id == songChannel)
             {
                  var message = await arg1.GetOrDownloadAsync();
                 if (!message.Content.Contains("open.spotify.com")) return;
                 if(arg3.Emote.Name.ToString() == songReact)
                 {
-                    logger("emotes are same and has link");
                     if (songReacts.ContainsKey(arg1.Id))
                     {
-                        logger("message seen before");
                         songReacts[arg1.Id]++;
                         if (songReacts[arg1.Id] == songLimit)
                         {
-                            logger("Limit reached");
                             if (!isInPlaylist.ContainsKey(arg1.Id))
                             {
-                                logger("not in playlist, add");
                                 isInPlaylist.Add(arg1.Id, true);
                                 string uri = message.Content.Replace("https://open.spotify.com/track/", "").Replace("http://open.spotify.com/track/", "").Replace("&utm_source=copy-link", "");
                                 if (uri.Contains("?si="))
@@ -267,6 +261,7 @@ namespace Jay_Bot
                                 uris.Add("spotify:track:" + uri);
                                 await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
                                 uris.Clear();
+                                logger("added to playlist");
                             }
                         }
                     }
@@ -498,7 +493,7 @@ namespace Jay_Bot
                     string limit = "";
                     if (message.Content.Length == 15)
                     {
-                        XmlNode xreactlimit = settings.DocumentElement.SelectSingleNode("//settings/reactcount");
+                        XmlNode xreactlimit = settings.DocumentElement.SelectSingleNode("//settings/songLimit");
                         await message.Channel.SendMessageAsync("React limit is currently " + xreactlimit.InnerText);
                         return;
                     }
@@ -515,7 +510,7 @@ namespace Jay_Bot
                             xreactlimit.InnerText = limit;
                             settings.Save("settings.xml");
                             await message.Channel.SendMessageAsync("Song react limit set to " + limit);
-                            int.TryParse(limit, out reactLimit);
+                            int.TryParse(limit, out songLimit);
                         }
                         else
                         {
@@ -665,12 +660,10 @@ namespace Jay_Bot
             }
             if(message.Author.Id == _client.CurrentUser.Id) //none from ourself please!
             {
-                logger("from the bot, ignore");
                 return;
             }
             if(message.Content == previousmessage) //ignore spambo jambo
             {
-                logger("spam");
                 return;
             }
             if(words.Count() == 1) //no single word sentences
@@ -679,12 +672,10 @@ namespace Jay_Bot
             }
             if (3 >= averagelength) //sentences of average word length less than 3 get BOOTED
             {
-                logger("avg less than 3 " +averagelength.ToString() );
                 return;
             }
             if (msg.Contains("http")) //no links in here, no sireeeeeee
             {
-                logger("link");
                 return;
             }
             if (blacklist.Contains(message.Channel.Id))//eventually we will just have a check for blacklisted channels
