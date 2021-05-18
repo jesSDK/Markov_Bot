@@ -20,6 +20,8 @@ namespace Jay_Bot
 
         private DiscordSocketClient _client;
         private static SpotifyClient _spotClient;
+        private static string spotClientID;
+        private static string spotClientSecret;
         private static EmbedIOAuthServer _server;
         public static int messageCount;
         public static Random rng = new Random();
@@ -64,22 +66,20 @@ namespace Jay_Bot
             rToke.Dispose();
 
             StreamReader spotifyTokenReader = new StreamReader(@"spotify.txt");
-            string spotClient = spotifyTokenReader.ReadLine();
+            spotClientID = spotifyTokenReader.ReadLine();
+            spotClientSecret = spotifyTokenReader.ReadLine();
             spotifyTokenReader.Dispose();
-
-
             _server = new EmbedIOAuthServer(new Uri("http://localhost:5000/callback"), 5000);
             await _server.Start();
 
-            _server.ImplictGrantReceived += OnImplicitGrantReceived;
+            _server.AuthorizationCodeReceived += OnAuthorizationCodeReceived;
             _server.ErrorReceived += OnErrorReceived;
 
-            var request = new LoginRequest(_server.BaseUri, spotClient, LoginRequest.ResponseType.Token)
+            var request = new LoginRequest(_server.BaseUri, spotClientID, LoginRequest.ResponseType.Code)
             {
                 Scope = new List<string> { Scopes.PlaylistModifyPublic }
             };
             BrowserUtil.Open(request.ToUri());
-
 
 
 
@@ -102,7 +102,7 @@ namespace Jay_Bot
             AutoUpdater.Synchronous = true;//Auto-Update Settings
             AutoUpdater.Mandatory = true;
             AutoUpdater.UpdateMode = Mode.Forced;
-            AutoUpdater.InstalledVersion = new Version("1.4.0.0");
+            AutoUpdater.InstalledVersion = new Version("1.4.2.0");
             AutoUpdater.CheckForUpdateEvent += AutoUpdaterOnCheckForUpdateEvent;
             AutoUpdater.ReportErrors = true;
             AutoUpdater.RunUpdateAsAdmin = false;
@@ -111,10 +111,18 @@ namespace Jay_Bot
             await Task.Delay(-1);
         }
 
-        private static async Task OnImplicitGrantReceived(object sender, ImplictGrantResponse response)
+        private static async Task OnAuthorizationCodeReceived(object sender, AuthorizationCodeResponse response)
         {
             await _server.Stop();
-            _spotClient = new SpotifyClient(response.AccessToken);
+
+            var config = SpotifyClientConfig.CreateDefault();
+            var tokenResponse = await new OAuthClient(config).RequestToken(
+              new AuthorizationCodeTokenRequest(
+                spotClientID, spotClientSecret, response.Code, new Uri("http://localhost:5000/callback")
+              )
+            );
+
+             _spotClient = new SpotifyClient(tokenResponse.AccessToken);
         }
 
         private static async Task OnErrorReceived(object sender, string error, string state)
@@ -235,46 +243,56 @@ namespace Jay_Bot
                 }
             }
         }
-        private async Task CountReacts(Cacheable<IUserMessage, ulong> arg1, ISocketMessageChannel arg2, SocketReaction arg3)//if reacts are equal to x, send original message to specificed channel
+        private async Task CountReacts(Cacheable<IUserMessage, ulong> arg1, ISocketMessageChannel arg2, SocketReaction arg3)
         {
-            if(arg2.Id == songChannel)
+            var message = await arg1.GetOrDownloadAsync();
+            try
+
             {
-                 var message = await arg1.GetOrDownloadAsync();
-                if (!message.Content.Contains("open.spotify.com")) return;
-                if(arg3.Emote.Name.ToString() == songReact)
+
+
+                if (arg2.Id == songChannel)
                 {
-                    if (songReacts.ContainsKey(arg1.Id))
+                    
+                    if (!message.Content.Contains("open.spotify.com")) return;
+                    if (arg3.Emote.Name.ToString() == songReact)
                     {
-                        songReacts[arg1.Id]++;
-                        if (songReacts[arg1.Id] == songLimit)
+                        if (songReacts.ContainsKey(arg1.Id))
                         {
-                            if (!isInPlaylist.ContainsKey(arg1.Id))
+                            songReacts[arg1.Id]++;
+                            if (songReacts[arg1.Id] == songLimit)
                             {
-                                isInPlaylist.Add(arg1.Id, true);
-                                string uri = message.Content.Replace("https://open.spotify.com/track/", "").Replace("http://open.spotify.com/track/", "").Replace("&utm_source=copy-link", "");
-                                if (uri.Contains("?si="))
+                                if (!isInPlaylist.ContainsKey(arg1.Id))
                                 {
-                                    int index = uri.IndexOf("?si=");
-                                    uri = uri.Substring(0, index);
+                                    isInPlaylist.Add(arg1.Id, true);
+                                    string uri = message.Content.Replace("https://open.spotify.com/track/", "").Replace("http://open.spotify.com/track/", "").Replace("&utm_source=copy-link", "");
+                                    if (uri.Contains("?si="))
+                                    {
+                                        int index = uri.IndexOf("?si=");
+                                        uri = uri.Substring(0, index);
+                                    }
+                                    List<string> uris = new List<string>();
+                                    uris.Add("spotify:track:" + uri);
+                                    await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
+                                    uris.Clear();
+                                    logger("added to playlist");
                                 }
-                                List<string> uris = new List<string>();
-                                uris.Add("spotify:track:" + uri);
-                                await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
-                                uris.Clear();
-                                logger("added to playlist");
                             }
                         }
+                        else
+                        {
+                            songReacts.Add(arg1.Id, 1);
+                        }
+
                     }
-                    else
-                    {
-                        songReacts.Add(arg1.Id, 1);
-                    }
-                   
                 }
+            }
+            catch (System.NullReferenceException ex)
+            {
+                await message.Channel.SendMessageAsync("Null reference exception: " +  ex.InnerException + " | " + ex.Message + " | " + ex.Source) ;
             }
             if (arg2.Id != pinChannel)
             {
-                var message = await arg1.GetOrDownloadAsync(); //download message content to cache
                 var pinsChannel = _client.GetChannel(pinChannel) as IMessageChannel;
                 if (arg3.Emote.Name.ToString() == reactEmote)
                 {
@@ -617,6 +635,10 @@ namespace Jay_Bot
                 if (message.Content.Contains("!t10"))
                 {
                     await message.Channel.SendMessageAsync(t10());
+                }
+                if(message.Content.Contains("!Suicide watch"))
+                {
+
                 }
             }
 
