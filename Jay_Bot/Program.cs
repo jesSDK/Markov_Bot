@@ -22,6 +22,7 @@ namespace Jay_Bot
         private static SpotifyClient _spotClient;
         private static string spotClientID;
         private static string spotClientSecret;
+        private static string refreshToken;
         private static EmbedIOAuthServer _server;
         public static int messageCount;
         public static Random rng = new Random();
@@ -91,6 +92,8 @@ namespace Jay_Bot
             _client.ReactionAdded += CountReacts;
             _client.ReactionRemoved += removeReactCount;
 
+            
+
             StreamReader sr = new StreamReader(memoryFile, Encoding.ASCII);//markov memory
             string training = sr.ReadToEnd();
             MarkovExperimental.markovTrainExperimental(training);
@@ -102,7 +105,7 @@ namespace Jay_Bot
             AutoUpdater.Synchronous = true;//Auto-Update Settings
             AutoUpdater.Mandatory = true;
             AutoUpdater.UpdateMode = Mode.Forced;
-            AutoUpdater.InstalledVersion = new Version("1.4.2.0");
+            AutoUpdater.InstalledVersion = new Version("1.4.2.2");
             AutoUpdater.CheckForUpdateEvent += AutoUpdaterOnCheckForUpdateEvent;
             AutoUpdater.ReportErrors = true;
             AutoUpdater.RunUpdateAsAdmin = false;
@@ -123,6 +126,7 @@ namespace Jay_Bot
             );
 
              _spotClient = new SpotifyClient(tokenResponse.AccessToken);
+            refreshToken = tokenResponse.RefreshToken;
         }
 
         private static async Task OnErrorReceived(object sender, string error, string state)
@@ -203,7 +207,7 @@ namespace Jay_Bot
 
             if (arg2.Id == songChannel) //any channel other than pins
             {
-                if (arg3.Emote.Name.ToString() == reactEmote)
+                if (arg3.Emote.Name.ToString() == songReact)
                 {
                     if (songReacts.ContainsKey(arg1.Id))
                     {
@@ -273,7 +277,17 @@ namespace Jay_Bot
                                     }
                                     List<string> uris = new List<string>();
                                     uris.Add("spotify:track:" + uri);
-                                    await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
+                                    try
+                                    {
+                                        await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
+                                    }
+                                    catch (SpotifyAPI.Web.APIUnauthorizedException ex)
+                                    {
+                                        var newTokenResponse = await new OAuthClient().RequestToken(new AuthorizationCodeRefreshRequest(spotClientID, spotClientSecret, refreshToken));
+
+                                        _spotClient = new SpotifyClient(newTokenResponse.AccessToken);
+                                        await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
+                                    }
                                     uris.Clear();
                                     logger("added to playlist");
                                 }
@@ -635,10 +649,6 @@ namespace Jay_Bot
                 if (message.Content.Contains("!t10"))
                 {
                     await message.Channel.SendMessageAsync(t10());
-                }
-                if(message.Content.Contains("!Suicide watch"))
-                {
-
                 }
             }
 
