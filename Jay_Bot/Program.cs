@@ -97,7 +97,6 @@ namespace Jay_Bot
             StreamReader sr = new StreamReader(memoryFile, Encoding.ASCII);//markov memory
             string training = sr.ReadToEnd();
             MarkovExperimental.markovTrainExperimental(training);
-            Markov.markovTrain(training);
             sr.Dispose();
 
             rngNumber();
@@ -105,7 +104,7 @@ namespace Jay_Bot
             AutoUpdater.Synchronous = true;//Auto-Update Settings
             AutoUpdater.Mandatory = true;
             AutoUpdater.UpdateMode = Mode.Forced;
-            AutoUpdater.InstalledVersion = new Version("1.4.2.2");
+            AutoUpdater.InstalledVersion = new Version("1.4.2.3");
             AutoUpdater.CheckForUpdateEvent += AutoUpdaterOnCheckForUpdateEvent;
             AutoUpdater.ReportErrors = true;
             AutoUpdater.RunUpdateAsAdmin = false;
@@ -624,13 +623,6 @@ namespace Jay_Bot
                     ulong.TryParse(finRole, out adminId);
                     await message.Channel.SendMessageAsync("Admin role set to: " +  roleSet);
                 }
-                if (message.Content.Contains("!ac"))
-                {
-                    List<string> uris = new List<string>();
-                    uris.Add("spotify:track:" + "5G1sTBGbZT5o4PNRc75RKI");
-                    await _spotClient.Playlists.AddItems(playlistID, new PlaylistAddItemsRequest(uris: uris));
-
-                }
                 if (message.Content.Contains("!add quote"))
                 {
                     createQuote(message.Content.Substring(11, message.Content.Length - 11));
@@ -716,7 +708,7 @@ namespace Jay_Bot
             }
             msg.Replace("\r", "").Replace("\n", "").Replace(".", "\u0003");//remove new lines and fullstops
             previousmessage = message.Content;
-            Markov.markovTrain(msg);
+            MarkovExperimental.markovTrainExperimental(msg);
             FileStream stream = new FileStream(memoryFile, FileMode.Append);
             using (StreamWriter writer = new StreamWriter(stream, Encoding.ASCII))
             {
